@@ -1,18 +1,21 @@
 
 # JeroMQ
 
-Pure Java implementation of libzmq (http://zeromq.org).
+Pure Java implementation of libzmq (<http://zeromq.org>).
 
-[![CircleCI](https://circleci.com/gh/zeromq/jeromq.svg?style=svg)](https://circleci.com/gh/zeromq/jeromq)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=zeromq_jeromq&metric=alert_status)](https://sonarcloud.io/dashboard?id=zeromq_jeromq)
+<!-- [![CircleCI](https://circleci.com/gh/zeromq/jeromq.svg?style=svg)](https://circleci.com/gh/zeromq/jeromq) -->
+<!-- [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=zeromq_jeromq&metric=alert_status)](https://sonarcloud.io/dashboard?id=zeromq_jeromq) -->
+
 [![Coverage Status](https://coveralls.io/repos/github/zeromq/jeromq/badge.svg?branch=master)](https://coveralls.io/github/zeromq/jeromq?branch=master)
+
 [![Maven Central](https://img.shields.io/maven-central/v/org.zeromq/jeromq.svg)](https://maven-badges.herokuapp.com/maven-central/org.zeromq/jeromq)
+
 [![Javadocs](http://www.javadoc.io/badge/org.zeromq/jeromq.svg)](http://www.javadoc.io/doc/org.zeromq/jeromq)
 
 ## Features
 
 * Based on libzmq 4.1.7.
-* ZMTP/3.0 (http://rfc.zeromq.org/spec:23).
+* ZMTP/3.0 (<http://rfc.zeromq.org/spec:23>).
 * tcp:// protocol and inproc:// is compatible with zeromq.
 * ipc:// protocol works only between jeromq (uses tcp://127.0.0.1:port internally).
 
@@ -24,7 +27,7 @@ Pure Java implementation of libzmq (http://zeromq.org).
   * 4.5M messages (100B) per sec.
   * [Performance](https://github.com/zeromq/jeromq/wiki/Performance).
 * Exactly same developer experience with zeromq and jzmq.
- 
+
 * TCP KeepAlive Count, Idle and Interval are known to only work with JVM 13 and later.
 
 ## Unsupported
