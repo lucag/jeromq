@@ -351,3 +351,61 @@ the file count alone suggests, with flow-control/reconnect/heartbeat coverage
 specifically de-risking the trickiest phases), but budget for writing 2-3 new
 tests — a concurrency/scale stress test and a pinning check — since those
 verify the actual reason for doing this, which nothing today measures.
+
+## 7. How would a Loom-based core interact with ZIO's own fibers?
+
+ZIO fibers and Loom virtual threads are two *different* scheduling
+abstractions that don't share a supervision tree, so this matters for the
+Scala facade's design specifically.
+
+**The core mismatch:** ZIO fibers are ZIO's own user-space scheduling
+construct, multiplexed onto a fixed pool of platform threads (ZIO's "compute"
+executor). A Loom-based JeroMQ, by contrast, has each connection's
+`SessionBase`/`StreamEngine` doing real blocking `SocketChannel.read()`/
+`write()` on its own virtual thread. Calling that blocking code directly from
+inside a ZIO effect (e.g., a bare `ZIO.succeed(socket.recv())`) risks blocking
+whichever compute-pool platform thread is currently running that fiber —
+starving every other fiber scheduled on it, the same "don't block the event
+loop" failure mode as blocking in Node.js or an actor mailbox thread.
+
+**The correct integration pattern:** wrap every blocking JeroMQ call in
+`ZIO.attemptBlocking`, which shifts it onto ZIO's separate blocking executor
+rather than the compute pool. Recent ZIO 2.x lets that blocking executor be
+backed by `Executors.newVirtualThreadPerTaskExecutor()`, which is the ideal
+pairing here — a virtual-thread-per-blocking-call, cheap enough that pool
+sizing stops being a concern the way it was when the blocking executor was a
+cached native-thread pool. Get the wrapping right and the two thread models
+compose cleanly: ZIO schedules fibers, and each fiber that touches JeroMQ
+transparently "becomes" a virtual thread for the duration of that call.
+
+**Two gotchas worth designing around up front:**
+
+1. **Interruption closes the channel, not just the read.** ZIO cancels a
+   fiber's blocking operation via `Thread.interrupt()` on the carrier thread.
+   `SocketChannel` implements `InterruptibleChannel`, so an interrupted
+   blocking read throws `ClosedByInterruptException` — but as a side effect,
+   *the whole channel gets closed*, not just that one call. So
+   `.timeout`/`.race`/explicit interruption on a JeroMQ-backed ZIO effect will
+   tear down the connection, which JeroMQ's existing reconnect path
+   (`SessionBase.engineError`, `ErrorReason.CONNECTION`) can probably absorb,
+   but it means "cancel this one recv" and "kill the connection" become the
+   same operation. Worth being explicit about in the facade's docs/API so it
+   isn't a surprise.
+2. **`FiberRef` doesn't propagate into JeroMQ's internal threads.** ZIO's
+   fiber-local context (tracing, logging MDC, etc.) is carried via `FiberRef`,
+   which only flows along ZIO's own fiber tree. JeroMQ's per-session virtual
+   threads are plain JVM threads outside that tree, so any user callback that
+   JeroMQ invokes directly from one of its own threads (rather than through a
+   `ZIO.attemptBlocking` call site the user controls) won't see that context.
+   This mostly matters if the Scala facade lets users register message
+   handlers that JeroMQ calls back into — those need to be re-lifted into a
+   ZIO fiber (running the handler back through the ZIO runtime) rather than
+   executed inline on JeroMQ's thread, or fiber-local context silently
+   vanishes.
+
+**Recommendation:** design the Scala facade so the *only* boundary between the
+two systems is a small number of `ZIO.attemptBlocking` call sites wrapping
+JeroMQ's blocking send/recv — never let ZIO fibers call in except through that
+wrapper, and never let JeroMQ call back into user code except by re-entering
+the ZIO runtime explicitly. Keep the two schedulers strictly at arm's length
+rather than trying to unify them; that's what makes this tractable.
